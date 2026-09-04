@@ -335,12 +335,13 @@ export default function DifferencesWizard({
           ) : (
             <Tree
               checkable
+              checkStrictly
               disabled={busy}
               selectable={false}
               defaultExpandAll
               checkedKeys={visibleCheckedKeys}
               onCheck={(keys) => {
-                const newVisibleChecked = keys as string[];
+                const newVisibleChecked = (keys as { checked: string[] }).checked;
                 setCheckedKeys((prev) => [
                   ...prev.filter((id) => !visibleIds.includes(id)),
                   ...newVisibleChecked,
