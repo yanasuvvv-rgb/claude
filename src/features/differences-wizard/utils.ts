@@ -86,6 +86,29 @@ export function tallyOperations(nodes: DiffNode[]): DiffSummary {
   return summary;
 }
 
+/**
+ * A node's own diff operation is independent of its children's (a schema can
+ * be "updated" while one of its tables is "added" and another "deleted"), so
+ * cascading the checkbox tree must not make an indeterminate parent drop out
+ * of the apply set just because it isn't fully checked. This returns every
+ * id that should still count as selected: explicitly checked, or an ancestor
+ * of at least one checked descendant (i.e. also indeterminate parents).
+ */
+export function effectiveSelection(nodes: DiffNode[], checkedIds: Set<string>): Set<string> {
+  const result = new Set<string>();
+  const walk = (node: DiffNode): boolean => {
+    const childChecked = (node.children ?? []).reduce(
+      (any, child) => walk(child) || any,
+      false,
+    );
+    const selected = checkedIds.has(node.id) || childChecked;
+    if (selected) result.add(node.id);
+    return selected;
+  };
+  nodes.forEach(walk);
+  return result;
+}
+
 /** Removes every node whose id is in `idsToRemove`, at any depth (subtree included). */
 export function removeNodes(nodes: DiffNode[], idsToRemove: Set<string>): DiffNode[] {
   const result: DiffNode[] = [];

@@ -34,6 +34,7 @@ import {
   type LevelFilter,
   type OperationFilter,
   collectAllIds,
+  effectiveSelection,
   filterTree,
   flatten,
   removeNodes,
@@ -144,10 +145,17 @@ export default function DifferencesWizard({
   );
 
   const summary = useMemo(() => summarize(tree), [tree]);
-  const selectedSummary = useMemo(() => {
-    const checkedSet = new Set(checkedKeys);
-    return tallyOperations(flatten(tree).filter((n) => checkedSet.has(n.id)));
-  }, [tree, checkedKeys]);
+  // A node's own operation is independent of its children's, so an indeterminate
+  // parent (cascade-unchecked only because some descendant was individually
+  // deselected) must still count as selected for its own operation.
+  const effectiveSelectedIds = useMemo(
+    () => effectiveSelection(tree, new Set(checkedKeys)),
+    [tree, checkedKeys],
+  );
+  const selectedSummary = useMemo(
+    () => tallyOperations(flatten(tree).filter((n) => effectiveSelectedIds.has(n.id))),
+    [tree, effectiveSelectedIds],
+  );
 
   const treeData = useMemo(() => filteredTree.map(nodeToTreeData), [filteredTree]);
 
@@ -192,11 +200,12 @@ export default function DifferencesWizard({
   };
 
   const handleApply = () => {
-    if (checkedKeys.length === 0) {
+    if (effectiveSelectedIds.size === 0) {
       message.warning('Отметьте хотя бы одну операцию для применения');
       return;
     }
     const s = selectedSummary;
+    const idsToApply = Array.from(effectiveSelectedIds);
     modal.confirm({
       title: 'Подтверждение применения изменений',
       width: 480,
@@ -216,8 +225,8 @@ export default function DifferencesWizard({
       onOk: async () => {
         setApplying(true);
         try {
-          await onApply(checkedKeys);
-          const remaining = removeNodes(tree, new Set(checkedKeys));
+          await onApply(idsToApply);
+          const remaining = removeNodes(tree, effectiveSelectedIds);
           setTree(remaining);
           setCheckedKeys(collectAllIds(remaining));
           modal.success({
@@ -260,7 +269,7 @@ export default function DifferencesWizard({
             <StatChip label="Обновлено" value={summary.updated} color="#1677ff" />
             <StatChip label="Удалено" value={summary.deleted} color="#ff4d4f" />
             <StatChip label="Всего" value={summary.added + summary.updated + summary.deleted} color="rgba(0,0,0,0.65)" />
-            <StatChip label="Выбрано" value={checkedKeys.length} color="rgba(0,0,0,0.65)" />
+            <StatChip label="Выбрано" value={effectiveSelectedIds.size} color="rgba(0,0,0,0.65)" />
           </Space>
           <Typography.Text type="secondary">
             Последняя сверка: {dayjs(run.finishedAt).format('DD.MM.YYYY HH:mm')}
@@ -335,13 +344,12 @@ export default function DifferencesWizard({
           ) : (
             <Tree
               checkable
-              checkStrictly
               disabled={busy}
               selectable={false}
               defaultExpandAll
               checkedKeys={visibleCheckedKeys}
               onCheck={(keys) => {
-                const newVisibleChecked = (keys as { checked: string[] }).checked;
+                const newVisibleChecked = keys as string[];
                 setCheckedKeys((prev) => [
                   ...prev.filter((id) => !visibleIds.includes(id)),
                   ...newVisibleChecked,
@@ -369,7 +377,7 @@ export default function DifferencesWizard({
               disabled={comparing}
               onClick={handleApply}
             >
-              Применить выбранные ({checkedKeys.length})
+              Применить выбранные ({effectiveSelectedIds.size})
             </Button>
           </Space>
         </Flex>
